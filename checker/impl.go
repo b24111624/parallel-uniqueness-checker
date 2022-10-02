@@ -34,8 +34,8 @@ func (c *Checker) Run(ctx context.Context) func() error {
 			if _, ok := c.RecordMap.Load(line[1]); ok {
 				logger.WithFields(logger.Fields{
 					"code": line[1],
-				}).Info("found duplication")
-				return fmt.Errorf("code is dupliced")
+				}).Error("found duplication")
+				return fmt.Errorf("code %s is dupliced", line[1])
 			}
 
 			c.RecordMap.Store(line[1], true)

@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 
 	logger "github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
@@ -24,7 +22,7 @@ func main() {
 	config := config.GetConfig()
 
 	// Init Context
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 	group, ctx := errgroup.WithContext(ctx)
 
 	// Get sample data folder
@@ -67,25 +65,12 @@ func main() {
 		group.Go(checkerStore.Run(ctx))
 	}
 
-	// Set event listener
-	eventChan := make(chan os.Signal, 1)
-	signal.Notify(eventChan, syscall.SIGINT, syscall.SIGTERM)
-
 	logger.Info("Started parallel-uniqueness-checker")
-
-	// Wait til notified
-	select {
-	case <-eventChan:
-	case <-ctx.Done():
-	}
-
-	logger.Info("Stopping parallel-uniqueness-checker ...")
-
-	cancel()
 
 	// Wait for group to finish
 	if err := group.Wait(); err != nil {
 		logger.WithField("err", err).Fatal("group.Wait failed")
 	}
 
+	logger.Info("No duplicate code")
 }
