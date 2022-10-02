@@ -1,23 +1,29 @@
 package main
 
 import (
+	"context"
 	"encoding/csv"
-	"fmt"
-	"io"
 	"os"
+	"sync"
 
 	logger "github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 
+	"github.com/b24111624/parallel-uniqueness-checker/checker"
 	config "github.com/b24111624/parallel-uniqueness-checker/config"
 )
 
 func main() {
 	// Init log
 	logger.SetLevel(logger.DebugLevel)
-	logger.Info("Start parallel-uniqueness-checker")
+	logger.Info("Starting parallel-uniqueness-checker ...")
 
 	// Get config
 	config := config.GetConfig()
+
+	// Init Context
+	ctx := context.Background()
+	group, ctx := errgroup.WithContext(ctx)
 
 	// Get sample data folder
 	dir, err := os.Open(config.FileDir)
@@ -38,8 +44,8 @@ func main() {
 		logger.WithField("err", err).Fatal("os.Chdir failed")
 	}
 
-	// Parse smaple data files
-	recordMap := map[string]string{}
+	// Process smaple data files
+	recordMap := sync.Map{}
 	for _, f := range files {
 		csvFile, err := os.Open(f.Name())
 		if err != nil {
@@ -47,56 +53,24 @@ func main() {
 		}
 		defer csvFile.Close()
 
+		// Get all data from file
 		csvReader := csv.NewReader(csvFile)
-
-		// Get header
-		title, err := csvReader.Read()
-		if err == io.EOF {
-			break
-		}
+		records, err := csvReader.ReadAll()
 		if err != nil {
-			logger.WithField("err", err).Fatal(err)
+			logger.WithField("err", err).Fatal("csvReader.ReadAll failed")
 		}
 
-		err = checkTitle(title)
-		if err != nil {
-			logger.WithField("err", err).Fatal(err)
-		}
-
-		for {
-			line, err := csvReader.Read()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				logger.WithField("err", err).Fatal(err)
-			}
-
-			logger.Debug(line)
-
-			if recordFile, ok := recordMap[line[1]]; ok {
-				logger.WithFields(logger.Fields{
-					"file": line[0] + " and " + recordFile,
-					"code": line[1],
-				}).Info("found duplication")
-				return
-			}
-
-			recordMap[line[1]] = line[0]
-		}
+		// Start Checker Store
+		checkerStore := checker.NewStore(records, &recordMap)
+		group.Go(checkerStore.Run(ctx))
 	}
 
-	logger.Info("no dplication found!")
-}
+	logger.Info("Started parallel-uniqueness-checker")
 
-func checkTitle(title []string) error {
-	if len(title) != 3 {
-		return fmt.Errorf("invlid title, got %d column(s)", len(title))
+	// Wait for group to finish
+	if err := group.Wait(); err != nil {
+		logger.WithField("err", err).Fatal("group.Wait failed")
 	}
 
-	if title[0] != "barcode" || title[1] != "code" || title[2] != "YearWeek" {
-		return fmt.Errorf("invalid csv format")
-	}
-
-	return nil
+	logger.Info("No duplicate code")
 }
