@@ -1,2 +1,2 @@
 run:
-	go run main.go
+	FILE_DIR=SAMPLES go run main.go
